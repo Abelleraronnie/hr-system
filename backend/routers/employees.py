@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database import get_db
 import models, schemas
 from routers.auth import get_current_user
@@ -26,9 +26,19 @@ def emp_to_dict(emp):
     }
 
 
+# Fix #1: Add pagination to prevent loading all employees into memory
+# Fix #1: Use eager loading (joinedload) to prevent N+1 queries
 @router.get("/")
-def get_employees(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    employees = db.query(models.Employee).all()
+def get_employees(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """Get paginated list of employees with eager loading to prevent N+1 queries"""
+    employees = db.query(models.Employee).options(
+        joinedload(models.Employee.department)
+    ).offset(skip).limit(limit).all()
     return [emp_to_dict(e) for e in employees]
 
 
@@ -45,7 +55,9 @@ def create_employee(data: schemas.EmployeeCreate, db: Session = Depends(get_db),
 
 @router.get("/{emp_id}")
 def get_employee(emp_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    emp = db.query(models.Employee).filter(models.Employee.id == emp_id).first()
+    emp = db.query(models.Employee).options(
+        joinedload(models.Employee.department)
+    ).filter(models.Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     return emp_to_dict(emp)
