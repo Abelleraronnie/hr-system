@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime
 from database import get_db
 import models, schemas
@@ -8,19 +8,25 @@ from routers.auth import get_current_user
 router = APIRouter()
 
 
+# Fix #1: Add pagination and eager loading to prevent N+1 queries
 @router.get("/")
 def get_attendance(
     date_filter: str = None,
     employee_id: int = None,
+    skip: int = 0,
+    limit: int = 100,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    query = db.query(models.Attendance)
+    """Get paginated attendance records with eager loading"""
+    query = db.query(models.Attendance).options(
+        joinedload(models.Attendance.employee)
+    )
     if date_filter:
         query = query.filter(models.Attendance.date == date_filter)
     if employee_id:
         query = query.filter(models.Attendance.employee_id == employee_id)
-    records = query.order_by(models.Attendance.date.desc()).all()
+    records = query.order_by(models.Attendance.date.desc()).offset(skip).limit(limit).all()
     result = []
     for r in records:
         emp = r.employee
